@@ -1,4 +1,4 @@
-const { PutCommand, QueryCommand, GetCommand } = require('@aws-sdk/lib-dynamodb');
+const { PutCommand, QueryCommand, GetCommand, ScanCommand } = require('@aws-sdk/lib-dynamodb');
 const { v4: uuidv4 } = require('uuid');
 const { docClient, ok, created, badRequest, unauthorized, notFound, serverError, getCompetitorCode } = require('./utils');
 
@@ -47,35 +47,12 @@ const recordPassage = async (event) => {
 const listPassages = async (event) => {
   try {
     const { id: eventId } = event.pathParameters;
-
-    // Get all checkpoints for this event
-    const cpResult = await docClient.send(new QueryCommand({
-      TableName: CHECKPOINTS_TABLE,
-      IndexName: 'eventId-index',
-      KeyConditionExpression: 'eventId = :eventId',
+    const result = await docClient.send(new ScanCommand({
+      TableName: PASSAGES_TABLE,
+      FilterExpression: 'eventId = :eventId',
       ExpressionAttributeValues: { ':eventId': eventId },
     }));
-    const checkpointIds = new Set((cpResult.Items || []).map(c => c.id));
-
-    // Scan passages and filter by event
-    const passResult = await docClient.send(new QueryCommand({
-      TableName: PASSAGES_TABLE,
-      IndexName: 'competitorId-index', // We'll filter by eventId field
-      KeyConditionExpression: 'competitorId = :dummy',
-      ExpressionAttributeValues: { ':dummy': 'NOOP' },
-    })).catch(() => ({ Items: [] }));
-
-    // Use eventId field on passages
-    const allPassages = await docClient.send({
-      // Fallback: scan with filter
-      ...new (require('@aws-sdk/lib-dynamodb').ScanCommand)({
-        TableName: PASSAGES_TABLE,
-        FilterExpression: 'eventId = :eventId',
-        ExpressionAttributeValues: { ':eventId': eventId },
-      })
-    });
-
-    return ok(allPassages.Items || []);
+    return ok(result.Items || []);
   } catch (err) {
     console.error(err);
     return serverError(err.message);
@@ -99,7 +76,7 @@ const getResults = async (event) => {
         KeyConditionExpression: 'eventId = :eid',
         ExpressionAttributeValues: { ':eid': eventId },
       })),
-      docClient.send(new (require('@aws-sdk/lib-dynamodb').ScanCommand)({
+      docClient.send(new ScanCommand({
         TableName: PASSAGES_TABLE,
         FilterExpression: 'eventId = :eid',
         ExpressionAttributeValues: { ':eid': eventId },
