@@ -1,0 +1,208 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: TrailPoint - Automobilové orientační soutěže
+
+Globals:
+  Function:
+    Runtime: nodejs20.x
+    Timeout: 15
+    MemorySize: 256
+    Environment:
+      Variables:
+        EVENTS_TABLE: trailpoint-events
+        CHECKPOINTS_TABLE: trailpoint-checkpoints
+        COMPETITORS_TABLE: trailpoint-competitors
+        PASSAGES_TABLE: trailpoint-passages
+        ADMIN_KEY: trailpoint2026
+  Api:
+    Cors:
+      AllowMethods: "'*'"
+      AllowHeaders: "'*'"
+      AllowOrigin: "'*'"
+
+Resources:
+  # API Gateway
+  TrailPointApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      StageName: prod
+      Cors:
+        AllowMethods: "'*'"
+        AllowHeaders: "'*'"
+        AllowOrigin: "'*'"
+
+  # Shared IAM Policy for DynamoDB access
+  LambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: DynamoDBAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - dynamodb:GetItem
+                  - dynamodb:PutItem
+                  - dynamodb:UpdateItem
+                  - dynamodb:DeleteItem
+                  - dynamodb:Query
+                  - dynamodb:Scan
+                Resource:
+                  - !Sub "arn:aws:dynamodb:eu-west-1:${AWS::AccountId}:table/trailpoint-*"
+                  - !Sub "arn:aws:dynamodb:eu-west-1:${AWS::AccountId}:table/trailpoint-*/index/*"
+
+  # Lambda Functions
+  CreateEventFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: src/handlers/events.createEvent
+      CodeUri: .
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Events:
+        Api:
+          Type: Api
+          Properties:
+            RestApiId: !Ref TrailPointApi
+            Path: /events
+            Method: POST
+
+  ListEventsFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: src/handlers/events.listEvents
+      CodeUri: .
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Events:
+        Api:
+          Type: Api
+          Properties:
+            RestApiId: !Ref TrailPointApi
+            Path: /events
+            Method: GET
+
+  GetEventFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: src/handlers/events.getEvent
+      CodeUri: .
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Events:
+        Api:
+          Type: Api
+          Properties:
+            RestApiId: !Ref TrailPointApi
+            Path: /events/{id}
+            Method: GET
+
+  CreateCheckpointFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: src/handlers/checkpoints.createCheckpoint
+      CodeUri: .
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Events:
+        Api:
+          Type: Api
+          Properties:
+            RestApiId: !Ref TrailPointApi
+            Path: /events/{id}/checkpoints
+            Method: POST
+
+  ListCheckpointsFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: src/handlers/checkpoints.listCheckpoints
+      CodeUri: .
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Events:
+        Api:
+          Type: Api
+          Properties:
+            RestApiId: !Ref TrailPointApi
+            Path: /events/{id}/checkpoints
+            Method: GET
+
+  CreateCompetitorFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: src/handlers/competitors.createCompetitor
+      CodeUri: .
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Events:
+        Api:
+          Type: Api
+          Properties:
+            RestApiId: !Ref TrailPointApi
+            Path: /events/{id}/competitors
+            Method: POST
+
+  ListCompetitorsFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: src/handlers/competitors.listCompetitors
+      CodeUri: .
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Events:
+        Api:
+          Type: Api
+          Properties:
+            RestApiId: !Ref TrailPointApi
+            Path: /events/{id}/competitors
+            Method: GET
+
+  RecordPassageFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: src/handlers/passages.recordPassage
+      CodeUri: .
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Events:
+        Api:
+          Type: Api
+          Properties:
+            RestApiId: !Ref TrailPointApi
+            Path: /passages
+            Method: POST
+
+  ListPassagesFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: src/handlers/passages.listPassages
+      CodeUri: .
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Events:
+        Api:
+          Type: Api
+          Properties:
+            RestApiId: !Ref TrailPointApi
+            Path: /events/{id}/passages
+            Method: GET
+
+  GetResultsFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: src/handlers/passages.getResults
+      CodeUri: .
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Events:
+        Api:
+          Type: Api
+          Properties:
+            RestApiId: !Ref TrailPointApi
+            Path: /events/{id}/results
+            Method: GET
+
+Outputs:
+  ApiUrl:
+    Description: API Gateway URL
+    Value: !Sub "https://${TrailPointApi}.execute-api.${AWS::Region}.amazonaws.com/prod"
